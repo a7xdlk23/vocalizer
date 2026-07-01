@@ -161,10 +161,15 @@ export function ModelManagerModal() {
                           Use
                         </button>
                       )}
-                      {isSelected && (
+                      {isSelected && model.installed && (
                         <span className="model-active-badge">
                           <CheckCircle2 size={10} />
                           Active
+                        </span>
+                      )}
+                      {isSelected && !model.installed && (
+                        <span className="model-active-badge" style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+                          Selected
                         </span>
                       )}
                       {!model.installed && !isDownloading && (

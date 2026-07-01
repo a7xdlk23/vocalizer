@@ -11,8 +11,10 @@ import httpx
 
 from app.config import settings
 
+import demucs
+
 ROOT_URL = "https://dl.fbaipublicfiles.com/demucs/"
-REMOTE_FILES_PATH = Path(__file__).parent.parent.parent / ".venv" / "Lib" / "site-packages" / "demucs" / "remote" / "files.txt"
+REMOTE_FILES_PATH = Path(demucs.__file__).parent / "remote" / "files.txt"
 
 # Map model id to its yaml definition file names in demucs/remote.
 MODEL_YAMLS = {
@@ -86,7 +88,9 @@ def get_model_files(model_id: str) -> list[dict]:
 
 def get_download_progress(model_id: str) -> dict:
     with _lock:
-        return _downloads.get(model_id, {"status": "idle", "progress": 0.0}).copy()
+        data = _downloads.get(model_id, {"status": "idle", "progress": 0.0}).copy()
+        data["model_id"] = model_id
+        return data
 
 
 def _set_progress(model_id: str, status: str, progress: float, **kwargs) -> None:

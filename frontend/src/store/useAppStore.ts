@@ -313,10 +313,22 @@ export const useAppStore = create<AppState>()(
 
   downloadModel: async (modelId) => {
     try {
+      set((state) => ({
+        downloadProgress: {
+          ...state.downloadProgress,
+          [modelId]: { model_id: modelId, status: 'downloading', progress: 0, bytes_downloaded: 0, total_bytes: 0 }
+        }
+      }))
       await api.downloadModel(modelId)
       get().pollDownloadProgress(modelId)
     } catch (err) {
-      set({ error: (err as Error).message })
+      set((state) => ({
+        error: (err as Error).message,
+        downloadProgress: {
+          ...state.downloadProgress,
+          [modelId]: { model_id: modelId, status: 'failed', progress: 0, bytes_downloaded: 0, total_bytes: 0, error_message: (err as Error).message }
+        }
+      }))
     }
   },
 

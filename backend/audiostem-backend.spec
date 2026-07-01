@@ -8,6 +8,7 @@ src-tauri/resources/audiostem-backend/ and shipped with the Tauri application.
 from pathlib import Path
 
 import torch
+from PyInstaller.utils.hooks import collect_data_files
 
 block_cipher = None
 
@@ -24,7 +25,7 @@ a = Analysis(
     [str(entry_script)],
     pathex=[str(spec_dir)],
     binaries=[(str(torch_lib), "torch/lib")] if torch_lib.exists() else [],
-    datas=[(str(app_package), "app")],
+    datas=[(str(app_package), "app")] + collect_data_files("demucs"),
     hiddenimports=[
         # ASGI / web stack
         "uvicorn",

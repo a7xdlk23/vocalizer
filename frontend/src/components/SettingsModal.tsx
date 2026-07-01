@@ -32,11 +32,11 @@ export function SettingsModal({ onClose }: Props) {
   const isDownloading = dlProg?.status === 'downloading'
 
   const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', minWidth: 130 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: 12 }}>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
         {label}
       </span>
-      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', minWidth: 0 }}>
         {children}
       </div>
     </div>
@@ -67,7 +67,7 @@ export function SettingsModal({ onClose }: Props) {
         aria-label="Settings"
         className="modal-content"
         style={{
-          padding: '20px 22px', width: 420, gap: 0, overflow: 'hidden',
+          padding: '24px 28px', width: 540, gap: 0, overflow: 'hidden',
         }}
       >
         {/* Header */}
@@ -134,7 +134,7 @@ export function SettingsModal({ onClose }: Props) {
               </Row>
             )}
             <Row label="Default Stems">
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div className="format-tabs">
                 {stemModes.map((m) => (
                   <button
                     key={m.value}
@@ -181,7 +181,7 @@ export function SettingsModal({ onClose }: Props) {
           <div className="section-label" style={{ marginBottom: 10 }}>Export Defaults</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
             <Row label="Format">
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div className="format-tabs">
                 {formats.map((f) => (
                   <button
                     key={f}
@@ -194,7 +194,7 @@ export function SettingsModal({ onClose }: Props) {
               </div>
             </Row>
             <Row label="Quality">
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div className="format-tabs">
                 {qualities.map((q) => (
                   <button
                     key={q}
