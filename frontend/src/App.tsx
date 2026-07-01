@@ -10,13 +10,12 @@ import { useAppStore } from './store/useAppStore'
 import { openAudioFiles, inTauri } from './lib/tauri'
 
 function App() {
-  const { fetchFiles, fetchModels, togglePlayPause, uploadNativeFiles, uploadFile } = useAppStore()
+  const { bootstrap, backendReady, togglePlayPause, uploadNativeFiles, uploadFile } = useAppStore()
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
-    fetchFiles()
-    fetchModels()
-  }, [fetchFiles, fetchModels])
+    bootstrap()
+  }, [bootstrap])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -71,6 +70,15 @@ function App() {
       />
       <ToastContainer />
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {!backendReady && (
+        <div className="engine-boot-overlay">
+          <div className="engine-boot-card">
+            <div className="engine-boot-spinner" />
+            <div className="engine-boot-title">Starting audio engine…</div>
+            <div className="engine-boot-sub">Loading the separation models. This can take a moment on first launch.</div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

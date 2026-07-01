@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.audiostem.app",
   "build": {
-    "beforeDevCommand": "cd ../frontend && npm run dev",
-    "beforeBuildCommand": "cd ../frontend && npm run build",
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "../frontend" },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../frontend" },
     "devUrl": "http://localhost:1420",
     "frontendDist": "../frontend/dist"
   },
@@ -69,7 +69,9 @@
     "copyright": "Copyright (c) 2026 AudioStem Team",
     "shortDescription": "Local AI music stem separator",
     "longDescription": "AudioStem runs Demucs locally to separate music into vocals, drums, bass, and other stems without sending audio to the cloud.",
-    "resources": {},
+    "resources": {
+      "resources/audiostem-backend": "audiostem-backend"
+    },
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",

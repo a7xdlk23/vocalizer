@@ -10,7 +10,8 @@ import type {
   StemMode,
 } from '../types'
 
-const API_BASE = 'http://127.0.0.1:8000/api/v1'
+const API_ROOT = 'http://127.0.0.1:8000'
+const API_BASE = `${API_ROOT}/api/v1`
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, options)
@@ -19,6 +20,37 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`API error ${res.status}: ${text}`)
   }
   return res.json() as Promise<T>
+}
+
+/** Single, quiet probe of the backend's /health endpoint. */
+async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_ROOT}/health`, { method: 'GET' })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Poll the backend until it answers /health, or until the timeout elapses.
+ *
+ * The bundled Python backend (PyInstaller + torch/demucs) has a slow cold
+ * start — it can take tens of seconds to import torch and bind the port. The
+ * webview loads almost instantly, so without this wait the first API calls
+ * race ahead of the server, fail with connection-refused, and the UI is left
+ * permanently empty. Returns true once the backend is reachable.
+ */
+export async function waitForBackend(
+  { timeoutMs = 120_000, intervalMs = 750 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    if (await checkHealth()) return true
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
 }
 
 export async function listFiles(): Promise<AudioFile[]> {

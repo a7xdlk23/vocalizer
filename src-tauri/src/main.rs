@@ -39,6 +39,22 @@ fn find_backend_from(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Prefer the project's virtualenv Python (which has the backend's dependencies
+/// installed) over the bare `python` on PATH, which is typically the system
+/// interpreter and lacks packages like `pydantic_settings`.
+fn venv_python(backend_dir: &Path) -> PathBuf {
+    let venv_python = if cfg!(windows) {
+        backend_dir.join(".venv").join("Scripts").join("python.exe")
+    } else {
+        backend_dir.join(".venv").join("bin").join("python")
+    };
+    if venv_python.exists() {
+        venv_python
+    } else {
+        PathBuf::from("python")
+    }
+}
+
 /// Locate the Python backend source directory using multiple strategies:
 /// 1. Walk up from the Tauri resource dir (works in `cargo tauri dev`)
 /// 2. Walk up from the running executable (works for release builds run from the repo)
@@ -99,7 +115,7 @@ async fn start_backend(app: AppHandle, state: State<'_, BackendState>) -> Result
     } else {
         let backend_dir = find_dev_backend()
             .ok_or("Backend executable not found and dev source fallback unavailable")?;
-        let mut c = Command::new("python");
+        let mut c = Command::new(venv_python(&backend_dir));
         c.arg("-m")
             .arg("uvicorn")
             .arg("app.main:app")

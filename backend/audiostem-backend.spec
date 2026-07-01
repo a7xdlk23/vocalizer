@@ -37,6 +37,8 @@ a = Analysis(
         "uvicorn.protocols.websockets",
         "uvicorn.protocols.websockets.auto",
         "fastapi",
+        "fastapi.middleware.cors",
+        "fastapi.responses",
         "starlette",
         "pydantic",
         "pydantic_settings",

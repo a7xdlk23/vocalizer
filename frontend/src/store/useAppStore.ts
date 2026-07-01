@@ -37,6 +37,7 @@ interface AppState {
   device: string
   isUploading: boolean
   error: string | null
+  backendReady: boolean
   previewPath: string | null
   activeStem: string | null
   stemStates: Record<string, StemState>
@@ -82,6 +83,7 @@ interface AppState {
   toggleStemSelected: (stem: string) => void
   resetStemStates: (stems: string[]) => void
 
+  bootstrap: () => Promise<void>
   fetchFiles: () => Promise<void>
   uploadFile: (file: File) => Promise<void>
   uploadNativeFiles: (files: { blob: Blob; name: string }[]) => Promise<void>
@@ -127,6 +129,7 @@ export const useAppStore = create<AppState>()(
   device: 'auto',
   isUploading: false,
   error: null,
+  backendReady: false,
   previewPath: null,
   activeStem: null,
   stemStates: {},
@@ -222,6 +225,20 @@ export const useAppStore = create<AppState>()(
     set({
       stemStates: Object.fromEntries(stems.map((s) => [s, defaultStemState()])),
     }),
+
+  bootstrap: async () => {
+    // Wait for the (slow-to-start) backend before firing the initial loads,
+    // otherwise the requests race the server's cold start and the UI comes up
+    // empty with no way to recover.
+    const ready = await api.waitForBackend()
+    set({ backendReady: ready })
+    if (!ready) {
+      set({ error: 'Could not reach the audio engine. Try restarting the app.' })
+      get().addToast('Audio engine did not start in time', 'error')
+      return
+    }
+    await Promise.all([get().fetchFiles(), get().fetchModels()])
+  },
 
   fetchFiles: async () => {
     try {
