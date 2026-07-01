@@ -18,10 +18,14 @@ router = APIRouter(prefix="/separate", tags=["separate"])
 
 @router.post("", response_model=SeparationJobOut)
 def start_separation(request: SeparationRequest, db: Session = Depends(get_db)) -> SeparationJob:
-    job_id = separator.create_job(request)
+    try:
+        job_id = separator.create_job(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Job creation failed: {str(e)}")
+    
     job = db.query(SeparationJob).filter(SeparationJob.id == job_id).first()
     if job is None:
-        raise HTTPException(status_code=500, detail="Failed to create separation job")
+        raise HTTPException(status_code=500, detail="Job created but not found in database")
     return job
 
 
@@ -29,7 +33,12 @@ def start_separation(request: SeparationRequest, db: Session = Depends(get_db)) 
 def start_batch_separation(request: BatchSeparationRequest) -> BatchSeparationOut:
     if not request.file_ids:
         raise HTTPException(status_code=400, detail="No file IDs provided")
-    batch_id, job_ids = separator.create_batch_job(request)
+    
+    try:
+        batch_id, job_ids = separator.create_batch_job(request)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch creation failed: {str(e)}")
+        
     return BatchSeparationOut(batch_id=batch_id, job_ids=job_ids)
 
 

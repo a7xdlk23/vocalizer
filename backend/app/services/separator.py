@@ -1,7 +1,6 @@
 """Demucs separation service with process-based workers and cancellation."""
 
 import json
-import multiprocessing
 import threading
 import time
 import types
@@ -9,9 +8,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+import soundfile as sf
 import torch
 from demucs.apply import apply_model
-from demucs.audio import save_audio
 from demucs.pretrained import get_model_from_args
 from demucs.separate import load_track
 
@@ -24,6 +23,20 @@ from app.services.model_manager import MODEL_REGISTRY, get_model_stems, load_cus
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
+
+
+def _save_wav(wav, path, samplerate: int) -> None:
+    """Write a (channels, samples) float tensor to a 32-bit float WAV via libsndfile.
+
+    Avoids demucs.save_audio / torchaudio.save, which on recent torchaudio route
+    through TorchCodec — an extra native dependency we neither install nor bundle.
+    soundfile (libsndfile) is already a dependency and is bundled by PyInstaller.
+    """
+    data = wav.detach().cpu().numpy()
+    if data.ndim == 1:
+        data = data[None, :]
+    # soundfile expects (frames, channels); demucs tensors are (channels, frames).
+    sf.write(str(path), data.T, int(samplerate), subtype="FLOAT")
 
 
 def detect_device() -> str:
@@ -64,17 +77,26 @@ def create_job(request: SeparationRequest) -> str:
     finally:
         db.close()
 
-    cancel_event = multiprocessing.Event()
-    process = multiprocessing.Process(
+    cancel_event = threading.Event()
+    worker = threading.Thread(
         target=_run_separation_worker,
         args=(job_id,),
         kwargs={"cancel_event": cancel_event},
         daemon=True,
+        name=f"separation-{job_id[:8]}",
     )
-    process.start()
+    try:
+        worker.start()
+    except Exception as exc:  # noqa: BLE001
+        # Leaving the job stuck in QUEUED forever would be worse than surfacing
+        # the error: mark it failed and re-raise so the API returns a real error.
+        print(f"[separator] failed to start worker for job {job_id}: {exc}", flush=True)
+        _update_status(job_id, JobStatus.FAILED.value, 0.0)
+        _mark_error(job_id, f"Failed to start separation worker: {exc}")
+        raise
 
     with _lock:
-        _jobs[job_id] = {"cancel_event": cancel_event, "process": process}
+        _jobs[job_id] = {"cancel_event": cancel_event, "thread": worker}
 
     return job_id
 
@@ -120,17 +142,18 @@ def create_batch_job(request: BatchSeparationRequest) -> tuple[str, list[str]]:
     finally:
         db.close()
 
-    cancel_event = multiprocessing.Event()
-    process = multiprocessing.Process(
+    cancel_event = threading.Event()
+    worker = threading.Thread(
         target=_run_batch_worker,
         args=(batch_id, job_ids),
         kwargs={"cancel_event": cancel_event},
         daemon=True,
+        name=f"batch-{batch_id[:8]}",
     )
-    process.start()
+    worker.start()
 
     with _lock:
-        entry = {"cancel_event": cancel_event, "process": process, "job_ids": job_ids}
+        entry = {"cancel_event": cancel_event, "thread": worker, "job_ids": job_ids}
         _jobs[batch_id] = entry
         for job_id in job_ids:
             _jobs[job_id] = entry
@@ -139,22 +162,24 @@ def create_batch_job(request: BatchSeparationRequest) -> tuple[str, list[str]]:
 
 
 def cancel_job(job_id: str) -> bool:
-    """Cancel a running job or batch by terminating its worker process."""
+    """Request cancellation of a running job or batch.
+
+    Cancellation is cooperative: the worker thread checks ``cancel_event`` at each
+    stage and stops at the next checkpoint. A thread can't be force-killed mid-
+    inference, so a long ``apply_model`` call runs to completion before the job
+    flips to CANCELLED — but no stems are written for a cancelled job.
+    """
     with _lock:
         entry = _jobs.get(job_id)
     if entry is None:
         return False
 
     entry["cancel_event"].set()
-    process = entry.get("process")
-    if process is not None and process.is_alive():
-        process.terminate()
 
-    # Mark all associated jobs/batch as cancelled.
+    # Mark all associated jobs/batch as cancelled for immediate UI feedback.
     ids_to_cancel = {job_id}
     if "job_ids" in entry:
         ids_to_cancel.update(entry["job_ids"])
-        ids_to_cancel.add(job_id)
 
     for jid in ids_to_cancel:
         _update_status(jid, JobStatus.CANCELLED.value, progress=0.0)
@@ -316,12 +341,12 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
                 other += sources[idx]
 
             stem_path = output_dir / f"{job.two_stem}.wav"
-            save_audio(sources[stem_idx], stem_path, model_samplerate, bits_per_sample=32, as_float=True)
+            _save_wav(sources[stem_idx], stem_path, model_samplerate)
             stem_paths[job.two_stem] = str(stem_path)
 
             other_name = f"no_{job.two_stem}"
             other_path = output_dir / f"{other_name}.wav"
-            save_audio(other, other_path, model_samplerate, bits_per_sample=32, as_float=True)
+            _save_wav(other, other_path, model_samplerate)
             stem_paths[other_name] = str(other_path)
         else:
             for idx, stem_name in enumerate(model_stems):
@@ -330,13 +355,7 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
                 if idx >= sources.shape[0]:
                     continue
                 stem_path = output_dir / f"{stem_name}.wav"
-                save_audio(
-                    sources[idx],
-                    stem_path,
-                    model_samplerate,
-                    bits_per_sample=32,
-                    as_float=True,
-                )
+                _save_wav(sources[idx], stem_path, model_samplerate)
                 stem_paths[stem_name] = str(stem_path)
 
         update_progress(JobStatus.COMPLETED.value, 100.0)
@@ -352,6 +371,13 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
             db.close()
 
     except Exception as exc:  # noqa: BLE001
+        # Surface the full stack in the backend logs (Tauri captures stderr) so
+        # the exact separation failure is diagnosable, not just the DB message.
+        import traceback
+
+        print(f"[separator] job {job_id} failed: {exc}", flush=True)
+        traceback.print_exc()
+
         elapsed = time.time() - start_time
         db = SessionLocal()
         try:
@@ -455,6 +481,19 @@ def _update_status(
             if elapsed is not None:
                 job.elapsed_seconds = elapsed
             job.eta_seconds = eta
+            job.updated_at = datetime.utcnow()
+            db.commit()
+    finally:
+        db.close()
+
+
+def _mark_error(job_id: str, message: str) -> None:
+    """Persist an error message on a job (used when a worker never starts)."""
+    db = SessionLocal()
+    try:
+        job = db.query(SeparationJob).filter(SeparationJob.id == job_id).first()
+        if job:
+            job.error_message = message
             job.updated_at = datetime.utcnow()
             db.commit()
     finally:

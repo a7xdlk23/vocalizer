@@ -1,9 +1,10 @@
 """Pydantic schemas for API requests and responses."""
 
+import json
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AudioFileIn(BaseModel):
@@ -57,6 +58,21 @@ class SeparationJobOut(BaseModel):
     end_time: float | None = None
     created_at: datetime
     updated_at: datetime
+
+    @field_validator("stems", mode="before")
+    @classmethod
+    def split_stems(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            return [s for s in v.split(",") if s]
+        return v
+
+    @field_validator("stem_paths", mode="before")
+    @classmethod
+    def parse_stem_paths(cls, v: Any) -> dict[str, str] | None:
+        # Stored as a JSON string (Text column) in the DB; the API contract is a dict.
+        if isinstance(v, str):
+            return json.loads(v) if v else None
+        return v
 
     class Config:
         from_attributes = True

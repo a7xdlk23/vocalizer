@@ -13,12 +13,65 @@ import type {
 const API_ROOT = 'http://127.0.0.1:8000'
 const API_BASE = `${API_ROOT}/api/v1`
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, options)
-  if (!res.ok) {
-    const text = await res.text().catch(() => 'Unknown error')
-    throw new Error(`API error ${res.status}: ${text}`)
+/** Typed API error that records exactly how a request failed. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly kind: 'network' | 'timeout' | 'http',
+    readonly method: string,
+    readonly path: string,
+    readonly status?: number,
+    readonly body?: string,
+  ) {
+    super(message)
+    this.name = 'ApiError'
   }
+}
+
+interface RequestOptions extends RequestInit {
+  /** Abort the request after this many ms (default 120s). */
+  timeoutMs?: number
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { timeoutMs = 120_000, ...init } = options
+  const url = `${API_BASE}${path}`
+  const method = (init.method ?? 'GET').toUpperCase()
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const started = performance.now()
+
+  let res: Response
+  try {
+    res = await fetch(url, { ...init, signal: init.signal ?? controller.signal })
+  } catch (err) {
+    // fetch() only rejects for network-level failures (connection refused/reset,
+    // DNS, CORS, or an aborted request) — never for HTTP error status codes.
+    if (controller.signal.aborted) {
+      const msg = `Request timed out after ${(timeoutMs / 1000).toFixed(0)}s: ${method} ${path}`
+      console.error('[api] timeout', { method, url, timeoutMs })
+      throw new ApiError(msg, 'timeout', method, path)
+    }
+    const detail = err instanceof Error ? err.message : String(err)
+    const msg =
+      `Cannot reach the audio engine (${method} ${path}). ` +
+      `The backend may have crashed or restarted — check the backend logs. [${detail}]`
+    console.error('[api] network failure', { method, url, error: detail })
+    throw new ApiError(msg, 'network', method, path)
+  } finally {
+    clearTimeout(timer)
+  }
+
+  const ms = Math.round(performance.now() - started)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    const msg = `API error ${res.status} ${res.statusText} (${method} ${path})${text ? `: ${text}` : ''}`
+    console.error('[api] http error', { method, url, status: res.status, ms, body: text })
+    throw new ApiError(msg, 'http', method, path, res.status, text)
+  }
+
+  console.debug('[api] ok', { method, url, status: res.status, ms })
   return res.json() as Promise<T>
 }
 

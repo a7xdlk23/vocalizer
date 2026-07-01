@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 
 import lameenc
+import numpy as np
+import soundfile as sf
 import torch
 import torchaudio
 
@@ -94,8 +96,29 @@ def export_stems(
 
 
 def _load_audio(path: Path) -> tuple[torch.Tensor, int]:
-    waveform, sample_rate = torchaudio.load(str(path))
+    # Read via libsndfile (soundfile), not torchaudio.load — recent torchaudio
+    # routes I/O through the unbundled TorchCodec backend.
+    data, sample_rate = sf.read(str(path), dtype="float32", always_2d=True)
+    # soundfile returns (frames, channels); the torch code here expects (channels, frames).
+    waveform = torch.from_numpy(data.T.copy())
     return waveform, int(sample_rate)
+
+
+def _save_pcm(waveform: torch.Tensor, destination: Path, sample_rate: int,
+              subtype: str, audio_format: str | None = None) -> None:
+    """Write a (channels, frames) tensor via libsndfile (soundfile)."""
+    data = waveform.detach().cpu().numpy()
+    if data.ndim == 1:
+        data = data[None, :]
+    sf.write(str(destination), data.T, int(sample_rate), subtype=subtype, format=audio_format)
+
+
+def _to_int16_interleaved(waveform: torch.Tensor) -> np.ndarray:
+    """Convert a float (channels, frames) tensor to interleaved int16 for lameenc."""
+    samples = waveform.detach().cpu().numpy().T  # (frames, channels)
+    if samples.ndim == 1:
+        samples = samples.reshape(-1, 1)
+    return (np.clip(samples, -1.0, 1.0) * 32767.0).astype(np.int16)
 
 
 def _resample(waveform: torch.Tensor, orig_sr: int, target_sr: int) -> torch.Tensor:
@@ -112,37 +135,19 @@ def _export_wav(source: Path, destination: Path, quality: dict) -> None:
     waveform, orig_sr = _load_audio(source)
     waveform = _resample(waveform, orig_sr, sample_rate)
 
-    if bit_depth == 16:
-        encoding = "PCM_S"
-        bps = 16
-    elif bit_depth == 24:
-        encoding = "PCM_S"
-        bps = 24
-    else:
-        encoding = "PCM_F"
-        bps = 32
-
-    torchaudio.save(str(destination), waveform, sample_rate, encoding=encoding, bits_per_sample=bps)
+    subtype = {16: "PCM_16", 24: "PCM_24"}.get(bit_depth, "FLOAT")
+    _save_pcm(waveform, destination, sample_rate, subtype)
 
 
 def _export_flac(source: Path, destination: Path, quality: dict) -> None:
     bit_depth = quality.get("bit_depth", 24)
-    compression = quality.get("compression", 5)
 
     waveform, orig_sr = _load_audio(source)
 
-    bps = bit_depth
-    encoding = "PCM_S" if bps in (16, 24) else "PCM_F"
-
-    torchaudio.save(
-        str(destination),
-        waveform,
-        orig_sr,
-        format="flac",
-        encoding=encoding,
-        bits_per_sample=bps,
-        compression=compression,
-    )
+    # libsndfile FLAC supports 16/24-bit PCM (not float); compression level is
+    # not exposed via soundfile, so libsndfile's default is used.
+    subtype = "PCM_24" if bit_depth == 24 else "PCM_16"
+    _save_pcm(waveform, destination, orig_sr, subtype, audio_format="FLAC")
 
 
 def _export_ogg(source: Path, destination: Path, quality: dict) -> None:
@@ -171,21 +176,18 @@ def _export_mp3(source: Path, destination: Path, quality: dict) -> None:
     vbr_quality = quality.get("vbr_quality", 2)
 
     waveform, sample_rate = _load_audio(source)
-    # Ensure mono/stereo interleaved numpy array.
-    samples = waveform.numpy().T
-    if samples.ndim == 1:
-        samples = samples.reshape(-1, 1)
+    samples = _to_int16_interleaved(waveform)
 
     encoder = lameenc.Encoder()
     encoder.set_channels(samples.shape[1])
-    encoder.set_in_samplerate(sample_rate)
+    encoder.set_in_sample_rate(sample_rate)
     encoder.set_bit_rate(bitrate)
 
     if mode == "vbr":
-        encoder.set_vbr_mode(lameenc.VBR_DEFAULT)
+        encoder.set_vbr(True)
         encoder.set_vbr_quality(vbr_quality)
     else:
-        encoder.set_vbr_mode(lameenc.VBR_OFF)
+        encoder.set_vbr(False)
 
     encoder.set_quality(2)
     mp3_data = encoder.encode(samples.tobytes())
@@ -232,18 +234,12 @@ def export_merged(
         bit_depth = quality.get("bit_depth", 24)
         sample_rate_out = quality.get("sample_rate", sample_rate)
         mixed = _resample(mixed, sample_rate, sample_rate_out)
-        bps = bit_depth
-        encoding = "PCM_F" if bps == 32 else "PCM_S"
-        torchaudio.save(str(out_path), mixed, sample_rate_out, encoding=encoding, bits_per_sample=bps)
+        subtype = {16: "PCM_16", 24: "PCM_24"}.get(bit_depth, "FLOAT")
+        _save_pcm(mixed, out_path, sample_rate_out, subtype)
     elif format_name == "flac":
         bit_depth = quality.get("bit_depth", 24)
-        compression = quality.get("compression", 5)
-        bps = bit_depth
-        encoding = "PCM_S" if bps in (16, 24) else "PCM_F"
-        torchaudio.save(
-            str(out_path), mixed, sample_rate, format="flac", encoding=encoding,
-            bits_per_sample=bps, compression=compression,
-        )
+        subtype = "PCM_24" if bit_depth == 24 else "PCM_16"
+        _save_pcm(mixed, out_path, sample_rate, subtype, audio_format="FLAC")
     elif format_name == "mp3":
         _export_mp3_from_tensor(mixed, sample_rate, out_path, quality)
 
@@ -255,20 +251,18 @@ def _export_mp3_from_tensor(waveform: torch.Tensor, sample_rate: int, destinatio
     mode = quality.get("mode", "cbr")
     vbr_quality = quality.get("vbr_quality", 2)
 
-    samples = waveform.numpy().T
-    if samples.ndim == 1:
-        samples = samples.reshape(-1, 1)
+    samples = _to_int16_interleaved(waveform)
 
     encoder = lameenc.Encoder()
     encoder.set_channels(samples.shape[1])
-    encoder.set_in_samplerate(sample_rate)
+    encoder.set_in_sample_rate(sample_rate)
     encoder.set_bit_rate(bitrate)
 
     if mode == "vbr":
-        encoder.set_vbr_mode(lameenc.VBR_DEFAULT)
+        encoder.set_vbr(True)
         encoder.set_vbr_quality(vbr_quality)
     else:
-        encoder.set_vbr_mode(lameenc.VBR_OFF)
+        encoder.set_vbr(False)
 
     encoder.set_quality(2)
     mp3_data = encoder.encode(samples.tobytes())

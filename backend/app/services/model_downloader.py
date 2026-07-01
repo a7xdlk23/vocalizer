@@ -27,9 +27,21 @@ MODEL_YAMLS = {
 _downloads: dict[str, dict] = {}
 _lock = threading.Lock()
 
+# Parsing the demucs remote index (and the per-model yamls) can touch the
+# network when the packaged app ships without the demucs data files. These
+# results never change within a session, so cache successful parses and never
+# repeat the lookup on the hot `/models` path. Empty results are NOT cached so
+# a later, genuine download attempt can retry.
+_remote_files_cache: dict[str, str] | None = None
+_signature_cache: dict[str, list[str]] = {}
+
 
 def _parse_remote_files() -> dict[str, str]:
     """Parse demucs remote files.txt into {signature: url}."""
+    global _remote_files_cache
+    if _remote_files_cache is not None:
+        return _remote_files_cache
+
     content = ""
     if not REMOTE_FILES_PATH.exists():
         # Fallback for non-standard installs: fetch from remote
@@ -53,27 +65,39 @@ def _parse_remote_files() -> dict[str, str]:
         else:
             sig = line.split("-", 1)[0]
             models[sig] = ROOT_URL + root + line
+    if models:
+        _remote_files_cache = models
     return models
 
 
 def _get_model_signatures(model_id: str) -> list[str]:
     """Read the demucs yaml for a model to find its checkpoint signatures."""
+    if model_id in _signature_cache:
+        return _signature_cache[model_id]
+
     import yaml
 
     yaml_name = MODEL_YAMLS.get(model_id)
     if not yaml_name:
         return []
     yaml_path = REMOTE_FILES_PATH.parent / yaml_name
-    if not yaml_path.exists():
+
+    result: list[str] = []
+    if yaml_path.exists():
+        data = yaml.safe_load(yaml_path.read_text())
+        result = data.get("models", [])
+    else:
         try:
             resp = httpx.get(f"https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/{yaml_name}", timeout=10.0)
             resp.raise_for_status()
             data = yaml.safe_load(resp.text)
-            return data.get("models", [])
+            result = data.get("models", [])
         except Exception:
-            return []
-    data = yaml.safe_load(yaml_path.read_text())
-    return data.get("models", [])
+            result = []
+
+    if result:
+        _signature_cache[model_id] = result
+    return result
 
 
 def _manifest_path(model_id: str) -> Path:

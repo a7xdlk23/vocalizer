@@ -304,8 +304,15 @@ export const useAppStore = create<AppState>()(
     try {
       const models = await api.listModels()
       set({ models })
-      const defaultModel = models.find((m) => m.default)
-      if (defaultModel) set({ selectedModel: defaultModel.id })
+      // Preserve the user's current selection across refreshes. Only fall back
+      // to the default (or first available) when the current selection is gone —
+      // e.g. on first load, or after deleting the selected model.
+      const { selectedModel } = get()
+      const stillValid = models.some((m) => m.id === selectedModel)
+      if (!stillValid) {
+        const fallback = models.find((m) => m.default) ?? models[0]
+        if (fallback) set({ selectedModel: fallback.id })
+      }
     } catch (err) {
       set({ error: (err as Error).message })
     }
@@ -348,9 +355,16 @@ export const useAppStore = create<AppState>()(
   },
 
   pollDownloadProgress: (modelId) => {
+    // Tolerate transient failures (backend busy, momentary connection drop)
+    // instead of silently abandoning the poll and leaving the card stuck on
+    // "Installing…". Give up only after several consecutive failures, and
+    // surface that as a failed download so the UI shows a Retry affordance.
+    const MAX_CONSECUTIVE_FAILURES = 5
+    let failures = 0
     const poll = async () => {
       try {
         const progress = await api.getModelDownloadProgress(modelId)
+        failures = 0
         set((state) => ({
           downloadProgress: { ...state.downloadProgress, [modelId]: progress },
         }))
@@ -359,8 +373,28 @@ export const useAppStore = create<AppState>()(
           return
         }
         setTimeout(poll, 1000)
-      } catch {
-        // Stop polling on error
+      } catch (err) {
+        failures += 1
+        if (failures >= MAX_CONSECUTIVE_FAILURES) {
+          set((state) => ({
+            downloadProgress: {
+              ...state.downloadProgress,
+              [modelId]: {
+                ...(state.downloadProgress[modelId] ?? {
+                  model_id: modelId,
+                  progress: 0,
+                  bytes_downloaded: 0,
+                  total_bytes: 0,
+                }),
+                status: 'failed',
+                error_message: `Lost contact with the audio engine: ${(err as Error).message}`,
+              },
+            },
+          }))
+          return
+        }
+        // Back off slightly, then keep trying.
+        setTimeout(poll, 2000)
       }
     }
     poll()
@@ -380,24 +414,30 @@ export const useAppStore = create<AppState>()(
       set({ error: 'No file selected' })
       return
     }
+    const payload = {
+      file_id: selectedFileId,
+      model: selectedModel,
+      overlap,
+      segment_duration: segmentDuration,
+      start_time: region?.start,
+      end_time: region?.end,
+      two_stem: api.twoStemValue(stemMode),
+      device: device === 'auto' ? undefined : device,
+    }
+    console.debug('[separate] starting', payload)
     try {
-      const job = await api.startSeparation({
-        file_id: selectedFileId,
-        model: selectedModel,
-        overlap,
-        segment_duration: segmentDuration,
-        start_time: region?.start,
-        end_time: region?.end,
-        two_stem: api.twoStemValue(stemMode),
-        device: device === 'auto' ? undefined : device,
-      })
+      const job = await api.startSeparation(payload)
+      console.debug('[separate] job created', job.id)
       set((state) => ({
         currentJobId: job.id,
         jobs: { ...state.jobs, [job.id]: job },
         error: null,
       }))
     } catch (err) {
-      set({ error: (err as Error).message })
+      const message = (err as Error).message
+      console.error('[separate] failed to start', err)
+      set({ error: message })
+      get().addToast(`Separation failed to start: ${message}`, 'error')
     }
   },
 

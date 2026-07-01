@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from app.config import settings
-from app.services.model_downloader import get_model_files, validate_model
+from app.services.model_downloader import _load_manifest, get_model_files
 
 _CUSTOM_REGISTRY_FILE = None
 
@@ -152,14 +152,27 @@ def _hub_checkpoints_dir() -> Path:
 
 
 def _is_model_installed(model_id: str) -> bool:
-    """Check whether a Demucs model exists in the local cache and is valid."""
+    """Cheap, network-free check that a model's checkpoint files are present locally.
+
+    This runs on every ``GET /models`` request, so it must stay fast and offline-safe:
+    no full-file SHA-256 hashing and no remote index lookups on the hot path.
+
+    Prefer the manifest written by our own downloader (instant, offline). Only fall
+    back to the remote file list to discover expected filenames when no manifest
+    exists — e.g. a model fetched directly by demucs/torch-hub on first separation.
+    """
     try:
-        files = get_model_files(model_id)
         checkpoint_dir = _hub_checkpoints_dir()
-        for file_info in files:
-            if not (checkpoint_dir / file_info["filename"]).exists():
-                return False
-        return validate_model(model_id)
+
+        manifest_files = _load_manifest(model_id).get("files")
+        if manifest_files:
+            return all((checkpoint_dir / f["filename"]).exists() for f in manifest_files)
+
+        files = get_model_files(model_id)
+        if files:
+            return all((checkpoint_dir / f["filename"]).exists() for f in files)
+
+        return False
     except Exception:
         return False
 

@@ -8,7 +8,7 @@ src-tauri/resources/audiostem-backend/ and shipped with the Tauri application.
 from pathlib import Path
 
 import torch
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
@@ -66,6 +66,14 @@ a = Analysis(
         "soundfile._soundfile_data",
         "lameenc",
         "mutagen",
+        # numpy 2.x: demucs checkpoints are unpickled through the numpy.core.*
+        # compat shims (lazy aliases to numpy._core). PyInstaller can't follow the
+        # lazy imports, so collect every numpy submodule explicitly — otherwise
+        # model loading fails with "No module named 'numpy.core.multiarray'".
+        *collect_submodules("numpy"),
+        "numpy.core.multiarray",
+        "numpy.core._multiarray_umath",
+        "numpy.core.numeric",
         # Utilities used by routers / services
         "rich",
         "httpx",
