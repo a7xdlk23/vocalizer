@@ -104,6 +104,9 @@ interface AppState {
   exportStems: (selectedStems?: string[], opts?: { merge?: boolean; zip?: boolean }) => Promise<Record<string, string>>
   clearError: () => void
 
+  showModelManager: boolean
+  setShowModelManager: (v: boolean) => void
+
   toasts: Toast[]
   addToast: (msg: string, type: 'success' | 'error' | 'info') => void
   removeToast: (id: string) => void
@@ -141,6 +144,7 @@ export const useAppStore = create<AppState>()(
   duration: 0,
   isMergedPreview: false,
   downloadProgress: {},
+  showModelManager: false,
 
   setSelectedFileId: (id) => set({ selectedFileId: id, selectedFileIds: id ? [id] : [] }),
   toggleFileSelection: (id) =>
@@ -503,6 +507,8 @@ export const useAppStore = create<AppState>()(
   },
 
   clearError: () => set({ error: null }),
+
+  setShowModelManager: (v) => set({ showModelManager: v }),
 
   toasts: [],
   addToast: (msg, type) =>

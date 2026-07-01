@@ -65,12 +65,9 @@ export function SettingsModal({ onClose }: Props) {
         role="dialog"
         aria-modal="true"
         aria-label="Settings"
+        className="modal-content"
         style={{
-          background: 'var(--panel)', border: '1px solid var(--border)',
-          borderRadius: 10, padding: '20px 22px', width: 420,
-          display: 'flex', flexDirection: 'column', gap: 0,
-          boxShadow: '0 24px 64px rgba(4,6,16,0.55)',
-          maxHeight: '85vh', overflow: 'hidden',
+          padding: '20px 22px', width: 420, gap: 0, overflow: 'hidden',
         }}
       >
         {/* Header */}
@@ -149,7 +146,7 @@ export function SettingsModal({ onClose }: Props) {
                 ))}
               </div>
             </Row>
-            <Row label={`Overlap — ${overlap.toFixed(2)}`}>
+            <Row label={`Overlap: ${overlap.toFixed(2)}`}>
               <input
                 type="range" min={0} max={0.9} step={0.05}
                 value={overlap}
@@ -233,7 +230,7 @@ export function SettingsModal({ onClose }: Props) {
           {/* Playback */}
           <div className="section-label" style={{ marginBottom: 10 }}>Playback</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 }}>
-            <Row label={`Default Volume — ${Math.round(playerVolume * 100)}%`}>
+            <Row label={`Default Volume: ${Math.round(playerVolume * 100)}%`}>
               <input
                 type="range" min={0} max={1} step={0.02}
                 value={playerVolume}

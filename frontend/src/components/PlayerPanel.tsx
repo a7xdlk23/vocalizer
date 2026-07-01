@@ -48,6 +48,7 @@ export function PlayerPanel() {
     currentTime, setCurrentTime, duration, setDuration,
     downloadModel, deleteModel, downloadProgress,
     error, clearError,
+    setShowModelManager, addToast,
   } = useAppStore()
 
   const [showImportModal, setShowImportModal] = useState(false)
@@ -139,6 +140,15 @@ export function PlayerPanel() {
     if (dir) setOutputDir(dir)
   }
 
+  const handleSeparate = () => {
+    if (selectedModelInfo && !selectedModelInfo.installed) {
+      addToast('Model not installed — opening Model Manager', 'info')
+      setShowModelManager(true)
+      return
+    }
+    startSeparation()
+  }
+
   const progressFillCls =
     job?.status === 'COMPLETED' ? 'progress-fill done'
     : job?.status === 'FAILED' || job?.status === 'CANCELLED' ? 'progress-fill fail'
@@ -197,12 +207,12 @@ export function PlayerPanel() {
 
       {/* Track tab */}
       {activeTab === 'track' && !selectedFile && (
-        <div className="empty-state" style={{ flex: 1, justifyContent: 'center' }}>
-          <svg className="empty-state-icon" width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <div className="empty-state" style={{ flex: 1, justifyContent: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 40, textAlign: 'center' }}>
+          <svg className="empty-state-icon" style={{ marginBottom: 16, color: 'var(--text-faint)' }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" />
           </svg>
-          <p className="empty-state-title">Select a track to begin</p>
-          <p className="empty-state-sub">Import audio files from the library panel</p>
+          <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>Select a track</p>
+          <p style={{ fontSize: 13, color: 'var(--text-faint)' }}>Import audio files from the library</p>
         </div>
       )}
 
@@ -412,7 +422,7 @@ export function PlayerPanel() {
 
               {/* Overlap */}
               <div className="setting-item" style={{ gridColumn: '1 / -1' }}>
-                <label>Overlap — {overlap.toFixed(2)}</label>
+                <label>Overlap: {overlap.toFixed(2)}</label>
                 <input
                   type="range"
                   min={0} max={0.9} step={0.05}
@@ -451,7 +461,7 @@ export function PlayerPanel() {
             ) : (
               <button
                 className="btn-primary separate-btn"
-                onClick={startSeparation}
+                onClick={handleSeparate}
                 disabled={!selectedFile || isProcessing}
                 aria-label="Start separation"
               >

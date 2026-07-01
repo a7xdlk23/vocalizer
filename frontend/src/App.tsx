@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Settings } from 'lucide-react'
+import { Settings, Package } from 'lucide-react'
 import { Layout } from './components/Layout'
 import { LibraryPanel } from './components/LibraryPanel'
 import { PlayerPanel } from './components/PlayerPanel'
 import { StemsPanel } from './components/StemsPanel'
 import { SettingsModal } from './components/SettingsModal'
+import { ModelManagerModal } from './components/ModelManagerModal'
 import { ToastContainer } from './components/Toast'
 import { useAppStore } from './store/useAppStore'
 import { openAudioFiles, inTauri } from './lib/tauri'
 
 function App() {
-  const { bootstrap, backendReady, togglePlayPause, uploadNativeFiles, uploadFile } = useAppStore()
+  const { bootstrap, backendReady, togglePlayPause, uploadNativeFiles, uploadFile, showModelManager, setShowModelManager } = useAppStore()
   const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
@@ -57,19 +58,31 @@ function App() {
         center={<PlayerPanel />}
         right={<StemsPanel />}
         titlebarRight={
-          <button
-            className="icon-btn btn-sm"
-            onClick={() => setShowSettings(true)}
-            title="Settings (preferences)"
-            aria-label="Open settings"
-            style={{ color: 'var(--text-faint)' }}
-          >
-            <Settings size={14} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              className="icon-btn btn-sm"
+              onClick={() => setShowModelManager(true)}
+              title="Model Manager"
+              aria-label="Open model manager"
+              style={{ color: 'var(--text-faint)' }}
+            >
+              <Package size={14} />
+            </button>
+            <button
+              className="icon-btn btn-sm"
+              onClick={() => setShowSettings(true)}
+              title="Settings (preferences)"
+              aria-label="Open settings"
+              style={{ color: 'var(--text-faint)' }}
+            >
+              <Settings size={14} />
+            </button>
+          </div>
         }
       />
       <ToastContainer />
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showModelManager && <ModelManagerModal />}
       {!backendReady && (
         <div className="engine-boot-overlay">
           <div className="engine-boot-card">
