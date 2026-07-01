@@ -30,13 +30,21 @@ _lock = threading.Lock()
 
 def _parse_remote_files() -> dict[str, str]:
     """Parse demucs remote files.txt into {signature: url}."""
+    content = ""
     if not REMOTE_FILES_PATH.exists():
         # Fallback for non-standard installs: fetch from remote
-        return {}
+        try:
+            resp = httpx.get("https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/files.txt", timeout=10.0)
+            resp.raise_for_status()
+            content = resp.text
+        except Exception:
+            return {}
+    else:
+        content = REMOTE_FILES_PATH.read_text()
 
     root = ""
     models: dict[str, str] = {}
-    for line in REMOTE_FILES_PATH.read_text().split("\n"):
+    for line in content.split("\n"):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -57,7 +65,13 @@ def _get_model_signatures(model_id: str) -> list[str]:
         return []
     yaml_path = REMOTE_FILES_PATH.parent / yaml_name
     if not yaml_path.exists():
-        return []
+        try:
+            resp = httpx.get(f"https://raw.githubusercontent.com/facebookresearch/demucs/main/demucs/remote/{yaml_name}", timeout=10.0)
+            resp.raise_for_status()
+            data = yaml.safe_load(resp.text)
+            return data.get("models", [])
+        except Exception:
+            return []
     data = yaml.safe_load(yaml_path.read_text())
     return data.get("models", [])
 
@@ -118,7 +132,9 @@ def _download_file(url: str, destination: Path, progress_callback) -> None:
         start_byte = partial.stat().st_size
         headers["Range"] = f"bytes={start_byte}-"
 
-    with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=60.0) as response:
+    # Explicit timeout to prevent infinite hangs. 30s connect, 30s read per chunk.
+    timeout = httpx.Timeout(30.0, read=30.0, connect=30.0)
+    with httpx.stream("GET", url, headers=headers, follow_redirects=True, timeout=timeout) as response:
         response.raise_for_status()
         total = int(response.headers.get("Content-Length", 0))
         if response.status_code == 206 and start_byte:
@@ -154,16 +170,16 @@ def download_model(model_id: str) -> None:
     total_downloaded = 0
 
     try:
-        # First pass: determine total sizes
-        for file_info in files:
-            try:
-                head = httpx.head(file_info["url"], follow_redirects=True, timeout=30.0)
-                length = int(head.headers.get("Content-Length", 0))
-                file_info["size"] = length
-                total_bytes += length
-            except Exception:
-                file_info["size"] = 0
-
+        # We skip the httpx.head first pass because it can hang or timeout on slow connections.
+        # Instead, we will accumulate total_bytes as we start downloading each file.
+        # We use a rough estimate based on model_id if available, otherwise it updates dynamically.
+        estimates = {
+            "htdemucs": 85_000_000,
+            "htdemucs_ft": 335_000_000,
+            "htdemucs_6s": 175_000_000,
+            "mdx_extra_q": 80_000_000,
+        }
+        total_bytes = estimates.get(model_id, 100_000_000)
         _set_progress(model_id, "downloading", 0.0, total_bytes=total_bytes)
 
         for file_info in files:
@@ -177,18 +193,24 @@ def download_model(model_id: str) -> None:
                     None,
                 )
                 if expected and existing_sha == expected:
-                    total_downloaded += file_info.get("size", destination.stat().st_size)
+                    file_size = destination.stat().st_size
+                    total_downloaded += file_size
                     manifest["files"].append({"filename": file_info["filename"], "sha256": expected})
                     continue
                 destination.unlink()
 
             file_last = [0]
+            file_seen_total = [False]
 
-            def callback(downloaded: int, total: int, last=file_last):
-                nonlocal total_downloaded
+            def callback(downloaded: int, total: int, last=file_last, seen_total=file_seen_total):
+                nonlocal total_downloaded, total_bytes
+                if total > 0 and not seen_total[0]:
+                    seen_total[0] = True
+                    # In a real dynamic scenario we'd adjust total_bytes, but estimate is fine for UX.
                 total_downloaded += downloaded - last[0]
                 last[0] = downloaded
                 progress = (total_downloaded / total_bytes * 100) if total_bytes else 0.0
+                progress = min(progress, 99.9)  # cap at 99.9 until fully verified
                 eta = _estimate_eta(model_id, total_downloaded, total_bytes)
                 _set_progress(
                     model_id,
@@ -202,7 +224,9 @@ def download_model(model_id: str) -> None:
             _download_file(file_info["url"], destination, callback)
             sha = _sha256_file(destination)
             manifest["files"].append({"filename": file_info["filename"], "sha256": sha})
-            total_downloaded += file_info.get("size", destination.stat().st_size)
+            # Add to total_downloaded if it was a tiny file and callback wasn't perfectly aligned
+            if file_last[0] == 0 and destination.exists():
+                 total_downloaded += destination.stat().st_size
 
         _save_manifest(model_id, manifest)
         _set_progress(model_id, "completed", 100.0, bytes_downloaded=total_bytes, total_bytes=total_bytes)

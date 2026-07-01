@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { X, Upload, Plus } from 'lucide-react'
-import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import { useAppStore } from '../store/useAppStore'
 import { inTauri } from '../lib/tauri'
 
@@ -29,13 +29,21 @@ export function ImportModelModal({ onClose }: Props) {
     if (inTauri()) {
       // Use Tauri dialog to get a local file path
       try {
-        const path = await invoke<string | null>('plugin:dialog|open', {
+        const path = await open({
           filters: [{ name: 'PyTorch Model', extensions: ['pt', 'th', 'pth', 'onnx'] }],
           multiple: false,
         })
-        if (path) {
-          setFilePath(path)
-          if (!name) setName(path.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '')
+        
+        let selectedPath = ''
+        if (typeof path === 'string') {
+          selectedPath = path
+        } else if (path && typeof path === 'object' && 'path' in path) {
+          selectedPath = (path as any).path
+        }
+        
+        if (selectedPath) {
+          setFilePath(selectedPath)
+          if (!name) setName(selectedPath.split(/[/\\]/).pop()?.replace(/\.[^.]+$/, '') ?? '')
         }
       } catch {
         fileInputRef.current?.click()

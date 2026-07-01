@@ -188,7 +188,10 @@ def _load_model(model_id: str):
         custom = load_custom_models()
         if model_id in custom:
             path = custom[model_id]["local_path"]
-            return torch.load(path, map_location="cpu", weights_only=False)
+            if path.endswith(".onnx"):
+                raise ValueError(f"ONNX separation is not natively supported by Demucs apply_model. Path: {path}")
+            from demucs.states import load_model
+            return load_model(path)
         raise ValueError(f"Custom model '{model_id}' not found in registry")
     args = types.SimpleNamespace(name=model_id, repo=None)
     return get_model_from_args(args)

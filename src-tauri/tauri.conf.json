@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AudioStem",
+  "productName": "Vocalizer",
   "version": "0.1.0",
-  "identifier": "com.audiostem.app",
+  "identifier": "com.vocalizer.desktop",
   "build": {
     "beforeDevCommand": { "script": "npm run dev", "cwd": "../frontend" },
     "beforeBuildCommand": { "script": "npm run build", "cwd": "../frontend" },
@@ -12,8 +12,8 @@
   "app": {
     "windows": [
       {
-        "title": "AudioStem",
-        "width": 1280,
+        "title": "Vocalizer",
+        "width": 1000,
         "height": 800,
         "minWidth": 1024,
         "minHeight": 700,
@@ -64,11 +64,11 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "category": "Music",
-    "publisher": "AudioStem Team",
-    "copyright": "Copyright (c) 2026 AudioStem Team",
+    "category": "Audio",
+    "publisher": "Vocalizer Team",
+    "copyright": "Copyright (c) 2026 Vocalizer Team",
     "shortDescription": "Local AI music stem separator",
-    "longDescription": "AudioStem runs Demucs locally to separate music into vocals, drums, bass, and other stems without sending audio to the cloud.",
+    "longDescription": "Vocalizer runs Demucs locally to separate music into vocals, drums, bass, and other stems without sending audio to the cloud.",
     "resources": {
       "resources/audiostem-backend": "audiostem-backend"
     },
