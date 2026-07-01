@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Settings } from 'lucide-react'
+import { HardDrive } from 'lucide-react'
 import { Layout } from './components/Layout'
 import { LibraryPanel } from './components/LibraryPanel'
 import { PlayerPanel } from './components/PlayerPanel'
@@ -58,13 +58,14 @@ function App() {
         titlebarRight={
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <button
-              className="icon-btn btn-sm"
+              className="btn-sm"
               onClick={() => setShowModelManager(true)}
-              title="Settings & Model Manager"
-              aria-label="Open settings"
-              style={{ color: 'var(--text-faint)' }}
+              title="Download, install, and manage separation models"
+              aria-label="Open model manager"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, color: 'var(--text-muted)' }}
             >
-              <Settings size={14} />
+              <HardDrive size={13} />
+              Models
             </button>
           </div>
         }

@@ -141,8 +141,8 @@ export function PlayerPanel() {
   }
 
   const handleSeparate = () => {
-    if (selectedModelInfo && !selectedModelInfo.installed) {
-      addToast('Model not installed — opening Model Manager', 'info')
+    if (!selectedModelInfo || !selectedModelInfo.installed) {
+      addToast('Selected model is not installed — opening Model Manager', 'info')
       setShowModelManager(true)
       return
     }
@@ -337,7 +337,17 @@ export function PlayerPanel() {
                   <select
                     id="model-select"
                     value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
+                    onChange={(e) => {
+                      const id = e.target.value
+                      setSelectedModel(id)
+                      // Picking a model that isn't downloaded yet routes the user
+                      // straight to the Model Manager to install it.
+                      const picked = models.find((m) => m.id === id)
+                      if (picked && !picked.installed) {
+                        addToast(`${picked.name} is not installed — opening Model Manager`, 'info')
+                        setShowModelManager(true)
+                      }
+                    }}
                     disabled={isProcessing}
                     style={{ flex: 1 }}
                   >
@@ -492,7 +502,7 @@ export function PlayerPanel() {
                   <span style={{ flex: 1 }}>{job.error_message}</span>
                   <button
                     className="btn-sm"
-                    onClick={startSeparation}
+                    onClick={handleSeparate}
                     title="Retry separation"
                     aria-label="Retry separation"
                   >

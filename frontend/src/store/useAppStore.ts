@@ -242,6 +242,21 @@ export const useAppStore = create<AppState>()(
       return
     }
     await Promise.all([get().fetchFiles(), get().fetchModels()])
+
+    // First-run guidance: if the active model isn't installed yet, take the
+    // user straight to the Model Manager so the download path is obvious
+    // instead of failing later at separation time.
+    const { models, selectedModel } = get()
+    const active = models.find((m) => m.id === selectedModel)
+    if (models.length > 0 && (!active || !active.installed)) {
+      set({ showModelManager: true })
+      get().addToast(
+        active
+          ? `${active.name} is not installed — download it to start separating`
+          : 'No model installed — pick one to download',
+        'info',
+      )
+    }
   },
 
   fetchFiles: async () => {
@@ -329,13 +344,20 @@ export const useAppStore = create<AppState>()(
       await api.downloadModel(modelId)
       get().pollDownloadProgress(modelId)
     } catch (err) {
+      const message = (err as Error).message
+      const isNetworkFailure =
+        err instanceof api.ApiError && (err.kind === 'network' || err.kind === 'timeout')
       set((state) => ({
-        error: (err as Error).message,
+        error: message,
+        showModelManager: isNetworkFailure ? true : state.showModelManager,
         downloadProgress: {
           ...state.downloadProgress,
-          [modelId]: { model_id: modelId, status: 'failed', progress: 0, bytes_downloaded: 0, total_bytes: 0, error_message: (err as Error).message }
+          [modelId]: { model_id: modelId, status: 'failed', progress: 0, bytes_downloaded: 0, total_bytes: 0, error_message: message }
         }
       }))
+      if (isNetworkFailure) {
+        get().addToast('Audio engine connection dropped while starting model download', 'error')
+      }
     }
   },
 
@@ -404,6 +426,7 @@ export const useAppStore = create<AppState>()(
     const {
       selectedFileId,
       selectedModel,
+      models,
       overlap,
       segmentDuration,
       region,
@@ -412,6 +435,15 @@ export const useAppStore = create<AppState>()(
     } = get()
     if (!selectedFileId) {
       set({ error: 'No file selected' })
+      return
+    }
+    const selectedModelInfo = models.find((m) => m.id === selectedModel)
+    if (selectedModelInfo && !selectedModelInfo.installed) {
+      set({
+        error: `Model "${selectedModelInfo.name}" is not installed`,
+        showModelManager: true,
+      })
+      get().addToast(`Install ${selectedModelInfo.name} before separating`, 'info')
       return
     }
     const payload = {
@@ -445,6 +477,7 @@ export const useAppStore = create<AppState>()(
     const {
       selectedFileIds,
       selectedModel,
+      models,
       overlap,
       segmentDuration,
       region,
@@ -452,6 +485,15 @@ export const useAppStore = create<AppState>()(
     } = get()
     if (selectedFileIds.length === 0) {
       set({ error: 'No files selected' })
+      return
+    }
+    const selectedModelInfo = models.find((m) => m.id === selectedModel)
+    if (selectedModelInfo && !selectedModelInfo.installed) {
+      set({
+        error: `Model "${selectedModelInfo.name}" is not installed`,
+        showModelManager: true,
+      })
+      get().addToast(`Install ${selectedModelInfo.name} before starting batch separation`, 'info')
       return
     }
     try {
