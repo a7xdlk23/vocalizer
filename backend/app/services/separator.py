@@ -292,9 +292,20 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
         wav -= ref.mean()
         wav /= ref.std().clamp_min(1e-8)
 
-        # Progress loop keeps elapsed_seconds and ETA updated while apply_model runs.
+        # Real chunk-level progress: demucs's split branch submits every audio
+        # segment to the pool up front and computes lazily inside result(), so
+        # a counting pool reports exactly how much of the track is done. The
+        # 1s side thread persists it with fresh elapsed/ETA between chunks.
+        n_sub_models = len(getattr(model, "models", [])) or 1
+        shared_progress = {"value": 10.0}
+
+        def _on_chunk_fraction(fraction: float) -> None:
+            # Map apply_model's 0..1 onto the 10..80 span of the job.
+            shared_progress["value"] = 10.0 + 69.5 * min(max(fraction, 0.0), 1.0)
+
+        chunk_pool = _ChunkProgressPool(n_sub_models, _on_chunk_fraction)
         progress_thread, stop_event = _start_progress_thread(
-            job_id, start_time, JobStatus.PROCESSING.value, 10.0, 80.0
+            job_id, start_time, JobStatus.PROCESSING.value, shared_progress
         )
         try:
             sources = apply_model(
@@ -306,6 +317,7 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
                 split=True,
                 progress=False,
                 num_workers=0,
+                pool=chunk_pool,
             )[0]
         finally:
             stop_event.set()
@@ -435,20 +447,66 @@ def _run_batch_worker(batch_id: str, job_ids: list[str], cancel_event) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
+class _ChunkProgressPool:
+    """Drop-in for demucs's DummyPoolExecutor that reports real chunk progress.
+
+    ``apply_model``'s split branch submits every chunk of a (sub-)model before
+    pulling any result, and with a lazy pool the forward pass runs inside
+    ``result()``. For a BagOfModels each sub-model forms one sequential group
+    of submissions, detectable as "a submit arriving when everything submitted
+    so far has already finished". Same-thread, sequential — identical output
+    to the DummyPoolExecutor demucs would otherwise use.
+    """
+
+    def __init__(self, total_groups: int, on_fraction) -> None:
+        self._total_groups = max(1, total_groups)
+        self._on_fraction = on_fraction
+        self._groups_done = 0
+        self._submitted = 0  # within the current group
+        self._done = 0  # within the current group
+
+    def submit(self, func, *args, **kwargs):
+        if self._submitted and self._done == self._submitted:
+            self._groups_done += 1
+            self._submitted = 0
+            self._done = 0
+        self._submitted += 1
+        return _LazyChunkResult(self, func, args, kwargs)
+
+    def _chunk_done(self) -> None:
+        self._done += 1
+        fraction = (
+            self._groups_done + self._done / max(1, self._submitted)
+        ) / self._total_groups
+        self._on_fraction(min(fraction, 1.0))
+
+
+class _LazyChunkResult:
+    def __init__(self, pool: _ChunkProgressPool, func, args, kwargs) -> None:
+        self._pool = pool
+        self._func = func
+        self._args = args
+        self._kwargs = kwargs
+
+    def result(self):
+        out = self._func(*self._args, **self._kwargs)
+        self._pool._chunk_done()
+        return out
+
+
 def _start_progress_thread(
     job_id: str,
     start_time: float,
     status: str,
-    progress_start: float,
-    progress_end: float,
+    shared_progress: dict,
 ) -> tuple[threading.Thread, threading.Event]:
-    """Start a background thread that updates elapsed time and ETA."""
+    """Persist the latest chunk progress with fresh elapsed time and ETA every second."""
     stop_event = threading.Event()
 
     def loop() -> None:
         while not stop_event.is_set():
             elapsed = time.time() - start_time
-            progress = progress_start + (progress_end - progress_start) * 0.5
+            progress = shared_progress["value"]
             eta = _estimate_eta(elapsed, progress)
             _update_status(job_id, status, progress, elapsed, eta)
             stop_event.wait(timeout=1.0)
