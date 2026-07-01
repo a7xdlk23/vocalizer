@@ -1,0 +1,21 @@
+[package]
+name = "audiostem"
+version = "0.1.0"
+description = "Local AI music stem separator"
+authors = ["AudioStem Team"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+chrono = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.41", features = ["rt-multi-thread", "process", "sync", "io-util", "fs"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

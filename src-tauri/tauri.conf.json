@@ -1,0 +1,97 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AudioStem",
+  "version": "0.1.0",
+  "identifier": "com.audiostem.app",
+  "build": {
+    "beforeDevCommand": "cd ../frontend && npm run dev",
+    "beforeBuildCommand": "cd ../frontend && npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AudioStem",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "description": "Core capability for the main AudioStem window",
+          "windows": ["main"],
+          "permissions": [
+            "dialog:default",
+            "dialog:allow-open",
+            "dialog:allow-save",
+            "fs:default",
+            "fs:allow-read-file",
+            "fs:allow-read-dir",
+            {
+              "identifier": "fs:scope",
+              "allow": [
+                { "path": "$HOME/.audiostem" },
+                { "path": "$HOME/.audiostem/**" },
+                { "path": "$HOME/Music" },
+                { "path": "$HOME/Music/**" },
+                { "path": "$HOME/Downloads" },
+                { "path": "$HOME/Downloads/**" },
+                { "path": "$HOME/Desktop" },
+                { "path": "$HOME/Desktop/**" },
+                { "path": "$RESOURCE/**" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg", "appimage", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Music",
+    "publisher": "AudioStem Team",
+    "copyright": "Copyright (c) 2026 AudioStem Team",
+    "shortDescription": "Local AI music stem separator",
+    "longDescription": "AudioStem runs Demucs locally to separate music into vocals, drums, bass, and other stems without sending audio to the cloud.",
+    "resources": {},
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": null,
+      "entitlements": null
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}

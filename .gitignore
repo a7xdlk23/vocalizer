@@ -1,0 +1,67 @@
+# This repo should only ever track source code and the config needed to
+# produce a release build. Everything generated, cached, downloaded, or
+# environment-specific is ignored below.
+
+# --- Python / backend ---
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/**/*.pyo
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/build/
+backend/dist/
+backend/*.egg-info/
+
+# --- Node / frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# --- Rust / Tauri ---
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/gen/
+# Bundled PyInstaller backend copied in at build time (see tauri.conf.json bundle.resources)
+src-tauri/resources/audiostem-backend/
+
+# --- App runtime data (created under the user's home dir, never in-repo) ---
+.audiostem/
+*.db
+*.db-journal
+*.log
+
+# --- Secrets / local env overrides ---
+.env
+.env.*
+!.env.example
+
+# --- Assistant / tooling local state (not app source or release artifacts) ---
+.omc/
+.agents/
+skills-lock.json
+
+# --- Ad-hoc review artifacts (screenshots, scratch files dropped at repo root) ---
+/*.png
+/*.jpg
+/*.jpeg
+/*.gif
+
+# --- Documentation (not app source or a release artifact) ---
+# No leading slash: matches at any depth, covers the hierarchical
+# AGENTS.md files generated throughout backend/, frontend/, src-tauri/.
+README.md
+AGENTS.md
+AudioStem_Separator_PRD.docx
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+
+# --- OS ---
+.DS_Store
+Thumbs.db
