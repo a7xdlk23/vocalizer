@@ -22,8 +22,9 @@ frontend/.vite/
 frontend/coverage/
 
 # --- Rust / Tauri ---
+# Cargo.lock is intentionally tracked (not ignored) — this is an application,
+# not a library, so the lockfile should be committed for reproducible builds.
 src-tauri/target/
-src-tauri/Cargo.lock
 src-tauri/gen/
 # Bundled PyInstaller backend copied in at build time (see tauri.conf.json bundle.resources)
 src-tauri/resources/audiostem-backend/
