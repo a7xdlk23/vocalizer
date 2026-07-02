@@ -18,11 +18,29 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.db import AudioFile, BatchJob, JobStatus, SeparationJob
 from app.models.schemas import BatchSeparationRequest, SeparationRequest
-from app.services.ffmpeg_validator import validate_ffmpeg_or_raise
+from app.services.ffmpeg_validator import detect_device, validate_ffmpeg_or_raise
 from app.services.model_manager import MODEL_REGISTRY, get_model_stems, load_custom_models
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
+
+
+def _resolve_device(requested: str | None) -> str:
+    """Resolve a requested device to one separation can actually run on.
+
+    Falls back to auto-detection when the requested device isn't available
+    (e.g. a persisted 'cuda:0' choice restored on a machine without CUDA)
+    instead of letting apply_model crash the job. DirectML never resolves
+    here: apply_model needs a torch device string, which DirectML can't be.
+    """
+    if requested and requested.startswith("cuda") and torch.cuda.is_available():
+        return requested
+    if requested == "mps" and torch.backends.mps.is_available():
+        return requested
+    if requested == "cpu":
+        return "cpu"
+    detected = detect_device()
+    return "cpu" if detected == "directml" else detected
 
 
 def _save_wav(wav, path, samplerate: int) -> None:
@@ -39,13 +57,7 @@ def _save_wav(wav, path, samplerate: int) -> None:
     sf.write(str(path), data.T, int(samplerate), subtype="FLOAT")
 
 
-def detect_device() -> str:
-    """Pick the best available compute device."""
-    if torch.cuda.is_available():
-        return "cuda"
-    if torch.backends.mps.is_available():
-        return "mps"
-    return "cpu"
+
 
 
 def create_job(request: SeparationRequest) -> str:
@@ -53,7 +65,7 @@ def create_job(request: SeparationRequest) -> str:
     job_id = str(uuid.uuid4())
     model = request.model or settings.default_model
     stems = request.stems or get_model_stems(model)
-    device = request.device or detect_device()
+    device = _resolve_device(request.device)
 
     db = SessionLocal()
     try:
@@ -106,7 +118,7 @@ def create_batch_job(request: BatchSeparationRequest) -> tuple[str, list[str]]:
     batch_id = str(uuid.uuid4())
     model = request.model or settings.default_model
     stems = request.stems or get_model_stems(model)
-    device = request.device or detect_device()
+    device = _resolve_device(request.device)
 
     db = SessionLocal()
     try:
@@ -308,10 +320,15 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
             job_id, start_time, JobStatus.PROCESSING.value, shared_progress
         )
         try:
+            target_device = job.device
+            if target_device == "directml":
+                import torch_directml
+                target_device = torch_directml.device()
+
             sources = apply_model(
                 model,
                 wav[None],
-                device=job.device,
+                device=target_device,
                 overlap=job.overlap,
                 segment=job.segment_duration,
                 split=True,

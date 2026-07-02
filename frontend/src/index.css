@@ -76,7 +76,7 @@ body {
   flex-shrink: 0;
 }
 
-.titlebar-logo { color: var(--accent); flex-shrink: 0; }
+.titlebar-logo { flex-shrink: 0; }
 
 .titlebar-name {
   font-size: 13px;
@@ -1277,6 +1277,60 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.25); }
   font-size: 11px;
   color: var(--danger);
   line-height: 1.4;
+}
+
+.model-manager-devices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.model-manager-devices-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.model-manager-devices-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.device-chip.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.device-chip-default {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.model-manager-devices-hint {
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 .model-manager-footer {

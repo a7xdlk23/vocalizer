@@ -147,3 +147,11 @@ class SystemStatus(BaseModel):
     device: str
     cuda_available: bool
     mps_available: bool
+    directml_available: bool
+
+
+class ComputeDevice(BaseModel):
+    id: str
+    name: str
+    kind: str  # cpu | cuda | mps
+    default: bool = False

@@ -126,6 +126,9 @@ async fn start_backend(app: AppHandle, state: State<'_, BackendState>) -> Result
         (c, backend_dir)
     };
 
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+
     // Ensure the log directory exists: ~/.audiostem/logs
     let log_dir = app
         .path()

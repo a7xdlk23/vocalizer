@@ -1,0 +1,10 @@
+# CUDA-enabled torch for local GPU builds (NVIDIA only).
+# Installed on top of requirements.txt: swaps the CPU torch wheels for CUDA ones.
+# CI intentionally does NOT use this file — hosted runners can't hold the ~5GB
+# bundle, so the CI installer stays CPU-only and GPU installers are built locally.
+# The +cu130 local-version pins are required: a plain `torch==2.12.1` is
+# "already satisfied" by the CPU wheel (+cpu) and pip won't swap it.
+--index-url https://download.pytorch.org/whl/cu130
+--extra-index-url https://pypi.org/simple
+torch==2.12.1+cu130
+torchaudio==2.11.0+cu130

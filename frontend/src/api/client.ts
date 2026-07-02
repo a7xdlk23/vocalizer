@@ -13,6 +13,30 @@ import type {
 const API_ROOT = 'http://127.0.0.1:8000'
 const API_BASE = `${API_ROOT}/api/v1`
 
+export interface SystemStatus {
+  ffmpeg_available: boolean
+  ffprobe_available: boolean
+  device: string
+  cuda_available: boolean
+  mps_available: boolean
+  directml_available: boolean
+}
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  return request('/system/status', { method: 'GET' })
+}
+
+export interface ComputeDevice {
+  id: string
+  name: string
+  kind: 'cpu' | 'cuda' | 'mps'
+  default: boolean
+}
+
+export async function getDevices(): Promise<ComputeDevice[]> {
+  return request('/system/devices', { method: 'GET' })
+}
+
 /** Typed API error that records exactly how a request failed. */
 export class ApiError extends Error {
   constructor(

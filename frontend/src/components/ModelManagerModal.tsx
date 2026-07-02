@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   X, Download, Trash2, RefreshCw, Upload, CheckCircle2,
-  HardDrive, Cpu, Gauge, Layers, AlertCircle, Loader2,
+  HardDrive, Cpu, Gauge, Layers, AlertCircle, Loader2, Zap,
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { ImportModelModal } from './ImportModelModal'
@@ -17,6 +17,9 @@ export function ModelManagerModal() {
     setSelectedModel,
     setShowModelManager,
     addToast,
+    devices,
+    device,
+    setDevice,
   } = useAppStore()
 
   const [showImport, setShowImport] = useState(false)
@@ -241,6 +244,38 @@ export function ModelManagerModal() {
                 </div>
               )
             })}
+          </div>
+
+          {/* Compute device */}
+          <div className="model-manager-devices">
+            <div className="model-manager-devices-label">
+              <Cpu size={12} />
+              Compute device
+            </div>
+            <div className="model-manager-devices-row">
+              <button
+                className={`btn-sm device-chip${device === 'auto' ? ' active' : ''}`}
+                onClick={() => setDevice('auto')}
+                title="Pick the best available device automatically"
+              >
+                Auto (recommended)
+              </button>
+              {devices.map((d) => (
+                <button
+                  key={d.id}
+                  className={`btn-sm device-chip${device === d.id ? ' active' : ''}`}
+                  onClick={() => setDevice(d.id)}
+                  title={d.default ? 'Auto currently picks this device' : `Run separation on ${d.name}`}
+                >
+                  {d.kind === 'cuda' ? <Zap size={11} /> : <Cpu size={11} />}
+                  {d.name}
+                  {d.default && <span className="device-chip-default">auto pick</span>}
+                </button>
+              ))}
+            </div>
+            <div className="model-manager-devices-hint">
+              GPU acceleration speeds up separation dramatically; Auto prefers the GPU when available.
+            </div>
           </div>
 
           {/* Footer */}

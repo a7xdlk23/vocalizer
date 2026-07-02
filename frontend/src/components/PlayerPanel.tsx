@@ -42,6 +42,7 @@ export function PlayerPanel() {
     overlap, setOverlap,
     segmentDuration, setSegmentDuration,
     stemMode, setStemMode,
+    device, setDevice, devices,
     outputDir, setOutputDir,
     isPlaying, setIsPlaying, stopPlayback, skip,
     playerVolume, setPlayerVolume, playerMuted, togglePlayerMuted,
@@ -428,6 +429,22 @@ export function PlayerPanel() {
                   onChange={(e) => setSegmentDuration(parseFloat(e.target.value))}
                   disabled={isProcessing}
                 />
+              </div>
+
+              {/* Compute Device */}
+              <div className="setting-item">
+                <label htmlFor="device-select">Compute Device</label>
+                <select
+                  id="device-select"
+                  value={device}
+                  onChange={(e) => setDevice(e.target.value)}
+                  disabled={isProcessing}
+                >
+                  <option value="auto">Auto (recommended)</option>
+                  {devices.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
               </div>
 
               {/* Overlap */}

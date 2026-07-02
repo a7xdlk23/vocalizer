@@ -35,6 +35,8 @@ interface AppState {
   segmentDuration: number
   stemMode: StemMode
   device: string
+  systemStatus: api.SystemStatus | null
+  devices: api.ComputeDevice[]
   isUploading: boolean
   error: string | null
   backendReady: boolean
@@ -90,6 +92,7 @@ interface AppState {
   deleteFile: (id: string) => Promise<void>
 
   fetchModels: () => Promise<void>
+  fetchDevices: () => Promise<void>
   downloadModel: (modelId: string) => Promise<void>
   deleteModel: (modelId: string) => Promise<void>
   importModel: (req: { name: string; path: string; stems: string[] }) => Promise<void>
@@ -130,6 +133,8 @@ export const useAppStore = create<AppState>()(
   segmentDuration: 10,
   stemMode: '4stem',
   device: 'auto',
+  systemStatus: null,
+  devices: [],
   isUploading: false,
   error: null,
   backendReady: false,
@@ -241,7 +246,13 @@ export const useAppStore = create<AppState>()(
       get().addToast('Audio engine did not start in time', 'error')
       return
     }
-    await Promise.all([get().fetchFiles(), get().fetchModels()])
+    const [_, __, ___, status] = await Promise.all([
+      get().fetchFiles(),
+      get().fetchModels(),
+      get().fetchDevices(),
+      api.getSystemStatus().catch(() => null),
+    ])
+    if (status) set({ systemStatus: status })
 
     // First-run guidance: if the active model isn't installed yet, take the
     // user straight to the Model Manager so the download path is obvious
@@ -330,6 +341,22 @@ export const useAppStore = create<AppState>()(
       }
     } catch (err) {
       set({ error: (err as Error).message })
+    }
+  },
+
+  fetchDevices: async () => {
+    try {
+      const devices = await api.getDevices()
+      set({ devices })
+      // A persisted device that no longer exists (e.g. GPU removed) falls
+      // back to auto so jobs don't get created against missing silicon.
+      const { device } = get()
+      if (device !== 'auto' && !devices.some((d) => d.id === device)) {
+        set({ device: 'auto' })
+      }
+    } catch {
+      // Non-fatal: the selector just shows Auto/CPU until a refresh.
+      set({ devices: [] })
     }
   },
 
