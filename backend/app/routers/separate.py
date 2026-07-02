@@ -11,13 +11,19 @@ from app.models.schemas import (
     SeparationJobOut,
     SeparationRequest,
 )
-from app.services import separator
 
 router = APIRouter(prefix="/separate", tags=["separate"])
+
+# NOTE: app.services.separator imports torch + demucs (~5s). It is imported
+# lazily inside the endpoints below (not at module load) so the server binds
+# the port and answers /health fast; the torch cost is paid on the first
+# separation instead of blocking startup. See the backend-readiness memo.
 
 
 @router.post("", response_model=SeparationJobOut)
 def start_separation(request: SeparationRequest, db: Session = Depends(get_db)) -> SeparationJob:
+    from app.services import separator
+
     try:
         job_id = separator.create_job(request)
     except Exception as e:
@@ -33,7 +39,9 @@ def start_separation(request: SeparationRequest, db: Session = Depends(get_db)) 
 def start_batch_separation(request: BatchSeparationRequest) -> BatchSeparationOut:
     if not request.file_ids:
         raise HTTPException(status_code=400, detail="No file IDs provided")
-    
+
+    from app.services import separator
+
     try:
         batch_id, job_ids = separator.create_batch_job(request)
     except Exception as e:
@@ -72,5 +80,7 @@ def cancel_job(job_id: str, db: Session = Depends(get_db)) -> dict:
     job = db.query(SeparationJob).filter(SeparationJob.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
+    from app.services import separator
+
     separator.cancel_job(job_id)
     return {"ok": True}

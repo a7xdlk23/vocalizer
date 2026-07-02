@@ -219,6 +219,18 @@ def get_batch_job(batch_id: str) -> BatchJob | None:
 # Model loading
 # ---------------------------------------------------------------------------
 
+# Loading a demucs checkpoint from disk costs ~1-2s. Keep the last-used model
+# resident so repeated and batch separations skip the reload. Bounded to a
+# single entry so a switched model frees the previous one's (V)RAM.
+_model_cache: dict[str, object] = {}
+_model_cache_lock = threading.Lock()
+
+# Serialize the actual apply_model inference. The cached model object is shared,
+# and apply_model calls model.to(device)/eval() on it — concurrent jobs would
+# race that and can OOM a GPU running two big models at once. One at a time.
+_inference_lock = threading.Lock()
+
+
 def _load_model(model_id: str):
     """Load a Demucs model by ID, supporting custom .pt/.onnx imports."""
     if model_id.startswith("custom_"):
@@ -232,6 +244,22 @@ def _load_model(model_id: str):
         raise ValueError(f"Custom model '{model_id}' not found in registry")
     args = types.SimpleNamespace(name=model_id, repo=None)
     return get_model_from_args(args)
+
+
+def _get_cached_model(model_id: str):
+    """Return a resident model, loading (and evicting the previous one) on miss."""
+    with _model_cache_lock:
+        cached = _model_cache.get(model_id)
+        if cached is not None:
+            return cached
+        if _model_cache:
+            # Drop the previous model and reclaim its VRAM before loading another.
+            _model_cache.clear()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        model = _load_model(model_id)
+        _model_cache[model_id] = model
+        return model
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +295,7 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
 
         update_progress(JobStatus.LOADING_MODEL.value, 5.0)
 
-        model = _load_model(job.model)
+        model = _get_cached_model(job.model)
 
         if cancel_event.is_set():
             update_progress(JobStatus.CANCELLED.value, 0.0)
@@ -325,17 +353,18 @@ def _run_separation_worker(job_id: str, cancel_event) -> None:
                 import torch_directml
                 target_device = torch_directml.device()
 
-            sources = apply_model(
-                model,
-                wav[None],
-                device=target_device,
-                overlap=job.overlap,
-                segment=job.segment_duration,
-                split=True,
-                progress=False,
-                num_workers=0,
-                pool=chunk_pool,
-            )[0]
+            with _inference_lock:
+                sources = apply_model(
+                    model,
+                    wav[None],
+                    device=target_device,
+                    overlap=job.overlap,
+                    segment=job.segment_duration,
+                    split=True,
+                    progress=False,
+                    num_workers=0,
+                    pool=chunk_pool,
+                )[0]
         finally:
             stop_event.set()
             progress_thread.join(timeout=1.0)

@@ -11,13 +11,17 @@ from app.config import settings
 from app.database import get_db
 from app.models.db import AudioFile, SeparationJob
 from app.models.schemas import ExportOut, ExportRequest
-from app.services.exporter import export_merged, export_stems, list_formats
 
 router = APIRouter(prefix="/export", tags=["export"])
+
+# app.services.exporter imports torch + torchaudio (~5s); import lazily inside
+# the endpoints so startup stays fast (torch loads on first export).
 
 
 @router.get("/formats")
 def get_formats() -> dict:
+    from app.services.exporter import list_formats
+
     return list_formats()
 
 
@@ -40,6 +44,8 @@ def export_job(request: ExportRequest, db: Session = Depends(get_db)) -> ExportO
     output_dir.mkdir(parents=True, exist_ok=True)
 
     selected = request.selected_stems or list(stem_paths.keys())
+
+    from app.services.exporter import export_merged, export_stems
 
     if request.merge:
         merged_path = export_merged(
